@@ -1,0 +1,222 @@
+---
+title: "Regression Models Course Project"
+author: "Brian Hampton"
+date: '2022-06-11'
+output:
+  pdf_document: default
+  html_document: default
+---
+## Executive Summary
+
+This report addresses questions posed in the Johns Hopkins Coursera Regression Models course project:
+
+*Working for Moter Trend, a magazine about the automobile industry, analyze the collection*
+*of cars in the mtcars data set to answer:*
+
+
+*1. Is an automatic or manual transmission better for MPG?*
+
+*2. Quantify the MPG difference between automatic and manual transmissions.*
+
+Manual transmission cars have a better MPG rating.  A univariate model, which only 
+accounts for 36 percent of the observed variability, predicts manual transmission cars
+to be better than automatic transmission cars by 7.2 gallons.  A multivariate model,
+which accounts for 85% of the observed variability predicts manual transmission cars to
+be better than automatic transmission cars by 2.9 mpg. Further investigation into the 
+selection of cars within the mtcars data set may reveal additional factors that contributed
+to the quantified results.
+
+## Exploratory Data Analysis
+```{r setup, echo=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(knitr)
+library(datasets)
+library(dplyr)
+data("mtcars")
+```
+*NOTE: code not shown in the report body is included in the appendix*
+
+After looking at the mtcars data set, for easier interpretation I added a variable
+*Transmission* with responses of *Automatic* or *Manual* based on the *am* variable
+responses.
+
+```{r change am to Transmission, echo=FALSE}
+mtcars$Transmission_Type[mtcars$am==0] <- "Automatic"
+mtcars$Transmission_Type[mtcars$am==1] <- "Manual"
+df <- mtcars[,-9, drop=FALSE]
+```
+**Table 1. Summary of Miles per Gallon (mpg) by Transmission Type**
+```{r Table 1, echo=FALSE}
+table_1 <- df %>%
+    group_by(Transmission_Type) %>%
+    summarise(n = n(),
+              min = min(mpg),
+              q1 = quantile(mpg, 0.25),
+              median = median(mpg),
+              mean_mpg = mean(mpg),
+              q3 = quantile(mpg, 0.75),
+              max = max(mpg),
+              sd_mpg = sd(mpg))
+kable(table_1, digits = 2)
+```
+
+```{r box plot 1, echo=FALSE}
+bp1 <- ggplot(df, aes(x=Transmission_Type, y=mpg, fill=Transmission_Type, 
+                          group=Transmission_Type)) + geom_boxplot()
+bp1 <- bp1 + geom_dotplot(binaxis='y', stackdir='center', dotsize=1)
+bp1 <- bp1 + labs(x="Transmission Type", y="Miles per Gallon (mpg)", 
+title="Miles per Gallon (mpg) by Transmission Type")
+bp1
+```
+
+The summary table for mpg by transmission and the visual representation of that data suggests
+that manual transmission cars within the data set have a higher mpg.  
+
+## Inference
+### Null Hypothesis
+H~o~: there is no difference in mean mpg between automatic and manual transmission cars.
+
+H~a~: the mean mpg for manual transmission cars is greater than the mean mpg for automatic transmission cars.
+
+### Univariate Regression Model
+```{r univariate regression, echo=TRUE}
+uv <- lm(mpg ~ Transmission_Type, data = df)
+summary(uv)
+```
+Considering only the relationship between mpg and transmission type, manual transmission cars 
+are more fuel efficient, by about 7.2 mpg. However, the R-squared value is 0.3598, meaning
+that only 36 percent of the observed variability is explained by this univariate regression model.
+
+### Multivariate Regression Model
+```{r multivariate regression, echo=TRUE}
+mv <- step(lm(mpg ~ ., data=df),direction="both", trace=FALSE)
+summary(mv)
+```
+```{r multivariate result for average car, echo=TRUE}
+mv_a <-lm(mpg ~ I(wt - mean(wt)) + I(qsec - mean(qsec)) + Transmission_Type, data = df)
+summary(mv_a)$coef
+```
+
+The multivariate model indicates that weight (wt), and quarter-mile time (qt) are confounding
+variables to the transmission type and mpg relationship within this data set.  With an R-squared
+value 0f 0.8497, 85% of the observed variability in the data set is explained by this 
+multivariate model.  With this model a manual transmission car is expected to have an mpg rating
+of 2.9 higher/better than an automatic transmission car. For a mean weight car with a mean
+quarter-mile time, the model expects a manual transmission car to have an mpg of 21.8 and an
+automatic transmission car to have an mpg of 18.9. 
+
+### Residual Analysis
+
+```{r residual plot, echo=FALSE}
+ra <- ggplot(mv, aes(.fitted, .resid)) + geom_point()
+ra <- ra + stat_smooth(method="loess", col="red") + geom_hline(yintercept=0, linetype="dashed")
+ra <- ra + xlab("Fitted Values") + ylab("Residuals")
+ra <- ra + ggtitle("Residual vs Fitted Plot") + theme_bw()
+ra
+```
+The residuals appear to "bounce randomly" around the 0 line, suggesting that it is reasonable
+to assume a linear relationship.  The residuals roughly form a "horizontal band" around the
+0 line except for the very highest observed mpg observations, suggesting that the majority
+of the error terms are equal.  No one residual appears to stand out from the pattern of
+residuals, suggesting that there are no outliers.
+
+### Uncertainty in Results
+Given report length constraints I recommend further investigation to better understand the
+data set. Specifically why are 7 of the 13 manual transmission cars lighter than the lightest
+manual transmission car. And conversely, why are 8 of the 19 automatic transmission cars
+heavier than the heaviest manual transmission car. When looking at a subset of mtcars bounded 
+by the lightest automatic transmission car and the heaviest manual transmission car, the difference
+in mpg by transmission type is not as discernible.
+
+**Table 2. Summary of MPG by Transmission Type for Data Bounded by Lightest Automatic and Heaviest Manual Transmission Cars**
+```{r table of mtcars bounded by lightest auto & heaviest manual, echo=FALSE}
+auto <- subset(df, Transmission_Type == "Automatic")
+manual <- subset(df, Transmission_Type == "Manual")
+df2 <- subset(df, wt >= min(auto$wt))
+df2 <- subset(df2, wt <= max(manual$wt))
+table_2 <- df2 %>%
+    group_by(Transmission_Type) %>%
+    summarise(n = n(),
+              min = min(mpg),
+              q1 = quantile(mpg, 0.25),
+              median = median(mpg),
+              mean_mpg = mean(mpg),
+              q3 = quantile(mpg, 0.75),
+              max = max(mpg),
+              sd_mpg = sd(mpg))
+kable(table_2, digits = 2)
+```
+
+### Conclusion
+1. Manual transmission cars attained a higher mpg within the entire mtcars data set.
+2. A model that considers weight and quarter-mile time as confounding variables over the entire mtcars
+data set accounts for more of the observed variability within the data set.
+
+Other factors not included in the variables, such as manufacturing trends or people's
+preferences, may have played a role in the selection of the mtcars data set and influenced
+the results.
+
+## Appendix
+```{r code for mtcars data disply}
+knitr::opts_chunk$set(echo = TRUE, results = "hide")
+### Initial look at mtcars
+display <- head(mtcars, 2)
+```
+
+```{r code to change variable names}
+mtcars$Transmission_Type[mtcars$am==0] <- "Automatic"
+mtcars$Transmission_Type[mtcars$am==1] <- "Manual"
+df <- mtcars[,-9, drop=FALSE]
+```
+
+```{r code for Table 1, echo=TRUE}
+### Summary table 1 for mtcars mpg by Transmission
+table_1 <- df %>%
+    group_by(Transmission_Type) %>%
+    summarise(n = n(),
+              min = min(mpg),
+              q1 = quantile(mpg, 0.25),
+              median = median(mpg),
+              mean_mpg = mean(mpg),
+              q3 = quantile(mpg, 0.75),
+              max = max(mpg),
+              sd_mpg = sd(mpg))
+kable(table_1, digits = 2)
+```
+
+```{r code for box plot 1, echo=TRUE}
+### box plot 1 for mtcars mpg by Transmission
+bp1 <- ggplot(df, aes(x=Transmission_Type, y=mpg, fill=Transmission_Type, 
+                          group=Transmission_Type)) + geom_boxplot()
+bp1 <- bp1 + geom_dotplot(binaxis='y', stackdir='center', dotsize=1)
+bp1 <- bp1 + labs(x="Transmission Type", y="Miles per Gallon (mpg)", 
+title="Miles per Gallon (mpg) by Transmission Type")
+```
+
+```{r code for residual plot, echo=TRUE}
+### Residual vs Fitted Plot for the multivariate (mv) model
+ra <- ggplot(mv, aes(.fitted, .resid)) + geom_point()
+ra <- ra + stat_smooth(method="loess", col="red") + geom_hline(yintercept=0, linetype="dashed")
+ra <- ra + xlab("Fitted Values") + ylab("Residuals")
+ra <- ra + ggtitle("Residual vs Fitted Plot") + theme_bw()
+```
+
+```{r code fortable of mtcars bounded by lightest auto & heaviest manual, echo=TRUE}
+### Summary table 2: subset mtcars bounded by lightest automatic and heaviest manual
+### and publish summary table of mpg by transmission type
+auto <- subset(df, Transmission_Type == "Automatic")
+manual <- subset(df, Transmission_Type == "Manual")
+df2 <- subset(df, wt >= min(auto$wt))
+df2 <- subset(df2, wt <= max(manual$wt))
+table_2 <- df2 %>%
+    group_by(Transmission_Type) %>%
+    summarise(n = n(),
+              min = min(mpg),
+              q1 = quantile(mpg, 0.25),
+              median = median(mpg),
+              mean_mpg = mean(mpg),
+              q3 = quantile(mpg, 0.75),
+              max = max(mpg),
+              sd_mpg = sd(mpg))
+kable(table_2, digits = 2)
