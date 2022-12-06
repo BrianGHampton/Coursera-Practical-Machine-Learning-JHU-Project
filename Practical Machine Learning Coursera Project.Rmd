@@ -12,10 +12,15 @@ Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible t
 ```{r setup, echo=TRUE, message=FALSE}
 library(knitr)
 library(caret)
+library(lattice)
 library(rpart)
 library(rpart.plot)
+library(rattle)
 library(randomForest)
+library(gbm)
 library(ggcorrplot)
+library(data.table)
+library(plotly)
 knitr::opts_chunk$set(echo = TRUE, dev = "png", cache = TRUE)
 ```
 
@@ -26,45 +31,81 @@ testing <- read.csv("pml-testing.csv")
 dim(training)
 dim(testing)
 ```
-Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the testing set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction.
+Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the testing set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction by cleaning the training data set.
 
 ## Cleaning the Data
 We'll start by removing columns that do not contain any values.
 ```{r Remove_NA_Columns}
 training <- training[, colSums(is.na(training)) == 0]
-testing <- testing[, colSums(is.na(testing)) == 0]
+dim(training)
 ```
-Now we will eliminate variables that do not appear to contribute to the accelerometer inputs.
-```{r Remove_Variables_that_do_not_Contribute_to_Accelerometers}
+
+```{r Remove_Timestamps}
+# Remove variables with time stamps and personal information
 classe <- training$classe
 training_scrub <- grepl("^X|timestamp|window", names(training))
 training <- training[, !training_scrub]
 training_assess <- training[, sapply(training, is.numeric)]
 training_assess$classe <- classe
-testing_scrub <- grepl("^X|timestamp|window", names(testing))
-testing <- testing[, !testing_scrub]
-testing_assess <- testing[, sapply(testing, is.numeric)]
 dim(training_assess)
-dim(testing_assess)
 ```
-That's a little more manageable!  Both data sets now only have 53 variables.  Now we are ready to slice our training data set.
+That's a little more manageable!  The training set now only have 53 variables.  We are ready to slice our training data set.
 
 ## Slicing the data
-We will split the training_assess data set into a training data set and a validation data set.
+We will split the training data set into training (70% of data) and a validation (30% of data) data sets.
 ```{r Slice_the_Training_Data_Set}
-set.seed(123) 
 inTrain <- createDataPartition(training_assess$classe, p=0.70, list=F)
 training_data <- training_assess[inTrain, ]
 val_data <- training_assess[-inTrain, ]
+dim(training_data)
+dim(val_data)
 ```
+
+A visual representation of variable correlation prior to proceeding to modeling the data.
+```{r Correlation_Plot}
+cp <- cor(training_data[, -length(names(training_data))])
+ggcorrplot(cp, title="Correlation Plot from Accelerometer Data", tl.cex=6)
+```
+
+
+
+
 ## Data Modeling
-words go here
+We will assess three models to the training data set and the best one relative to the validation data set will be used to predict the activity method for the raw test data set observations. The three modeling methods are decistion tree, generalized boosted model, and random forests.
+
+### Decision Tree
+```{r Decision_Tree_Matrix}
+DTM <- rpart(classe ~ ., data=training_data, method="class")
+fancyRpartPlot(DTM)
+```
+
+```{r Predict_with_DTM_Model}
+set.seed(123)
+predict_DTM <- predict(DTM, newdata=val_data, type="class")
+conf_matrix_DTM <- confusionMatrix(table(predict_DTM, val_data$classe))
+conf_matrix_DTM
+```
+
+### Generalized Boosted Model
+```{r Predict_with_GBM_Model}
+set.seed(123)
+GBM <- trainControl(method="repeatedcv", number = 5, repeats = 2)
+modfit_GBM <- train(classe ~., method="gbm", data=training_data, verbose=FALSE)
+
+predict_GBM <- predict(modfit_GBM, newdata=val_data)
+conf_matrix_GBM <- confusionMatrix(table(predict_GBM, val_data$classe))
+conf_matrix_GBM
+```
+
 ```{r RF_Model}
 controlRf <- trainControl(method="cv", 5)
 modelRf <- train(classe ~ ., data=training_data, method="rf", trControl=controlRf, ntree=250)
 modelRf
 ```
-More words about estimating the performance of the model on the validation data set.
+
+
+
+
 ```{r Predict_with_RF_Model}
 predictRf <- predict(modelRf, val_data)
 confusionMatrix(table(val_data$classe, predictRf))
@@ -82,17 +123,7 @@ Words about accuracy and out-of-sample error.
 result <- predict(modelRf, testing_assess[, -length(names(testing_assess))])
 result
 ```
-And finally a correlation plot and a decision tree matrix.
-```{r Correlation_Plot}
-cp <- cor(training_data[, -length(names(training_data))])
-ggcorrplot(cp, title="Correlation Plot from Accelerometer Data", tl.cex=6)
-```
 
-```{r Decision_Tree_Matrix}
-DTM <- rpart(classe ~ ., data=training_data, method="class")
-plot(DTM, main="Decision Tree Matrix from Accelerometer Data")
-text(DTM, cex=0.75)
-```
 
 
 
