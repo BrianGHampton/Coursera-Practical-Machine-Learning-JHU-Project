@@ -12,13 +12,14 @@ Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible t
 ```{r setup, echo=TRUE, message=FALSE}
 library(knitr)
 library(caret)
+library(ggplot2)
+library(corrplot)
 library(lattice)
 library(rpart)
 library(rpart.plot)
 library(rattle)
 library(randomForest)
 library(gbm)
-library(ggcorrplot)
 library(data.table)
 library(plotly)
 knitr::opts_chunk$set(echo = TRUE, dev = "png", cache = TRUE)
@@ -27,11 +28,11 @@ knitr::opts_chunk$set(echo = TRUE, dev = "png", cache = TRUE)
 ## Load and Read the Data
 ```{r Load and Read the Data}
 training <- read.csv("pml-training.csv")
-testing <- read.csv("pml-testing.csv")
+field_data <- read.csv("pml-testing.csv")
 dim(training)
-dim(testing)
+dim(field_data)
 ```
-Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the testing set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction by cleaning the training data set.
+Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the field_data set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction by cleaning the training data set.
 
 ## Cleaning the Data
 We'll start by removing columns that do not contain any values.
@@ -39,7 +40,7 @@ We'll start by removing columns that do not contain any values.
 training <- training[, colSums(is.na(training)) == 0]
 dim(training)
 ```
-
+We can continue by eliminating variables that contain personal information and time stamped data that are not accelerometer data.
 ```{r Remove_Timestamps}
 # Remove variables with time stamps and personal information
 classe <- training$classe
@@ -64,14 +65,14 @@ dim(val_data)
 A visual representation of variable correlation prior to proceeding to modeling the data.
 ```{r Correlation_Plot}
 cp <- cor(training_data[, -length(names(training_data))])
-ggcorrplot(cp, title="Correlation Plot from Accelerometer Data", tl.cex=6)
+corrplot(cp, order="FPC", method="circle", type="lower",  tl.cex = 0.6, tl.col = rgb(0, 0, 0))
 ```
 
 
 
 
 ## Data Modeling
-We will assess three models to the training data set and the best one relative to the validation data set will be used to predict the activity method for the raw test data set observations. The three modeling methods are decistion tree, generalized boosted model, and random forests.
+We will assess three models to the training data set and the best one relative to the validation data set will be used to predict the activity method for the field_data observations. The three modeling methods are Decision Tree, Generalized Boosted Model, and Random Forests.
 
 ### Decision Tree
 ```{r Decision_Tree_Matrix}
@@ -96,31 +97,40 @@ predict_GBM <- predict(modfit_GBM, newdata=val_data)
 conf_matrix_GBM <- confusionMatrix(table(predict_GBM, val_data$classe))
 conf_matrix_GBM
 ```
-
+### Random Forests
 ```{r RF_Model}
-controlRf <- trainControl(method="cv", 5)
-modelRf <- train(classe ~ ., data=training_data, method="rf", trControl=controlRf, ntree=250)
-modelRf
+set.seed(123)
+RF <- trainControl(method="cv", number=5)
+modfit_RF <- train(classe ~ ., data=training_data, method="rf", trControl=RF, ntree=250)
+modfit_RF
 ```
 
 
 
 
 ```{r Predict_with_RF_Model}
-predictRf <- predict(modelRf, val_data)
-confusionMatrix(table(val_data$classe, predictRf))
+predictRF <- predict(modfit_RF, val_data)
+confusionMatrix(table(val_data$classe, predictRF))
+```
 
-predict <- factor(predictRf) 
+
+## Prediction on the Field_Data Set
+Accuracy of the models were,
+Decision Tree: 73.93%;
+Generalized Boosted Model: 95.90%; and,
+Random Forests: 99.10%
+
+```{r Accuracy_and_Error}
+predict <- factor(predictRF) 
 classe <- factor(val_data$classe)
 accuracy <- postResample(predict, classe)
-accuracy
-1-accuracy[1]
+accuracy[1]
+oose <- 1-accuracy[1]
+oose
 ```
-Words about accuracy and out-of-sample error.
-
-## Predicting on the Test Data Set
+As the Random Forest model was the most accurate, with an accuracy of **`r format(round(accuracy[1], 4), nsmall=4)`** and an out-of-sample error of **`r format(round(oose, 4), nsmall=4)`**, applying it to the Field_Data set yields:
 ```{r Results}
-result <- predict(modelRf, testing_assess[, -length(names(testing_assess))])
+result <- predict(modfit_RF, field_data[, -length(names(field_data))])
 result
 ```
 
