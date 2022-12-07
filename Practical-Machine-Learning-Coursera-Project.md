@@ -20,6 +20,8 @@ library(caret)
 ```
 
 ```r
+library(ggplot2)
+library(corrplot)
 library(lattice)
 library(rpart)
 library(rpart.plot)
@@ -54,14 +56,6 @@ library(gbm)
 ```
 
 ```r
-library(ggcorrplot)
-```
-
-```
-## Warning: package 'ggcorrplot' was built under R version 4.2.2
-```
-
-```r
 library(data.table)
 library(plotly)
 ```
@@ -78,7 +72,7 @@ knitr::opts_chunk$set(echo = TRUE, dev = "png", cache = TRUE)
 
 ```r
 training <- read.csv("pml-training.csv")
-testing <- read.csv("pml-testing.csv")
+field_data <- read.csv("pml-testing.csv")
 dim(training)
 ```
 
@@ -87,13 +81,13 @@ dim(training)
 ```
 
 ```r
-dim(testing)
+dim(field_data)
 ```
 
 ```
 ## [1]  20 160
 ```
-Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the testing set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction by cleaning the training data set.
+Wow! Both data sets contain 160 variables!  The training data set contains 19,622 observations while the field_data set contains 20 observations.  Let's see if we can eliminate any variables that don't contribute to the prediction by cleaning the training data set.
 
 ## Cleaning the Data
 We'll start by removing columns that do not contain any values.
@@ -106,7 +100,7 @@ dim(training)
 ```
 ## [1] 19622    93
 ```
-
+We can continue by eliminating variables that contain personal information and time stamped data that are not accelerometer data.
 
 ```r
 # Remove variables with time stamps and personal information
@@ -149,7 +143,7 @@ A visual representation of variable correlation prior to proceeding to modeling 
 
 ```r
 cp <- cor(training_data[, -length(names(training_data))])
-ggcorrplot(cp, title="Correlation Plot from Accelerometer Data", tl.cex=6)
+corrplot(cp, order="FPC", method="circle", type="lower",  tl.cex = 0.6, tl.col = rgb(0, 0, 0))
 ```
 
 ![](Practical-Machine-Learning-Coursera-Project_files/figure-html/Correlation_Plot-1.png)<!-- -->
@@ -158,7 +152,7 @@ ggcorrplot(cp, title="Correlation Plot from Accelerometer Data", tl.cex=6)
 
 
 ## Data Modeling
-We will assess three models to the training data set and the best one relative to the validation data set will be used to predict the activity method for the raw test data set observations. The three modeling methods are decistion tree, generalized boosted model, and random forests.
+We will assess three models to the training data set and the best one relative to the validation data set will be used to predict the activity method for the field_data observations. The three modeling methods are Decision Tree, Generalized Boosted Model, and Random Forests.
 
 ### Decision Tree
 
@@ -262,12 +256,13 @@ conf_matrix_GBM
 ## Detection Prevalence   0.2856   0.1954   0.1788   0.1604   0.1798
 ## Balanced Accuracy      0.9858   0.9635   0.9666   0.9692   0.9804
 ```
-
+### Random Forests
 
 ```r
-controlRf <- trainControl(method="cv", 5)
-modelRf <- train(classe ~ ., data=training_data, method="rf", trControl=controlRf, ntree=250)
-modelRf
+set.seed(123)
+RF <- trainControl(method="cv", number=5)
+modfit_RF <- train(classe ~ ., data=training_data, method="rf", trControl=RF, ntree=250)
+modfit_RF
 ```
 
 ```
@@ -279,16 +274,16 @@ modelRf
 ## 
 ## No pre-processing
 ## Resampling: Cross-Validated (5 fold) 
-## Summary of sample sizes: 10990, 10990, 10989, 10988, 10991 
+## Summary of sample sizes: 10990, 10990, 10988, 10990, 10990 
 ## Resampling results across tuning parameters:
 ## 
 ##   mtry  Accuracy   Kappa    
-##    2    0.9914831  0.9892256
-##   27    0.9914105  0.9891341
-##   52    0.9850040  0.9810288
+##    2    0.9904642  0.9879368
+##   27    0.9906102  0.9881213
+##   52    0.9814378  0.9765181
 ## 
 ## Accuracy was used to select the optimal model using the largest value.
-## The final value used for the model was mtry = 2.
+## The final value used for the model was mtry = 27.
 ```
 
 
@@ -296,71 +291,78 @@ modelRf
 
 
 ```r
-predictRf <- predict(modelRf, val_data)
-confusionMatrix(table(val_data$classe, predictRf))
+predictRF <- predict(modfit_RF, val_data)
+confusionMatrix(table(val_data$classe, predictRF))
 ```
 
 ```
 ## Confusion Matrix and Statistics
 ## 
-##    predictRf
+##    predictRF
 ##        A    B    C    D    E
-##   A 1674    0    0    0    0
-##   B    6 1129    4    0    0
-##   C    0    4 1022    0    0
-##   D    0    0   17  946    1
-##   E    2    0    6    4 1070
+##   A 1671    2    0    0    1
+##   B   13 1121    5    0    0
+##   C    0    6 1015    5    0
+##   D    0    0   14  948    2
+##   E    0    0    0    5 1077
 ## 
 ## Overall Statistics
-##                                         
-##                Accuracy : 0.9925        
-##                  95% CI : (0.99, 0.9946)
-##     No Information Rate : 0.2858        
-##     P-Value [Acc > NIR] : < 2.2e-16     
-##                                         
-##                   Kappa : 0.9905        
-##                                         
-##  Mcnemar's Test P-Value : NA            
+##                                           
+##                Accuracy : 0.991           
+##                  95% CI : (0.9882, 0.9932)
+##     No Information Rate : 0.2862          
+##     P-Value [Acc > NIR] : < 2.2e-16       
+##                                           
+##                   Kappa : 0.9886          
+##                                           
+##  Mcnemar's Test P-Value : NA              
 ## 
 ## Statistics by Class:
 ## 
 ##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            0.9952   0.9965   0.9743   0.9958   0.9991
-## Specificity            1.0000   0.9979   0.9992   0.9964   0.9975
-## Pos Pred Value         1.0000   0.9912   0.9961   0.9813   0.9889
-## Neg Pred Value         0.9981   0.9992   0.9944   0.9992   0.9998
-## Prevalence             0.2858   0.1925   0.1782   0.1614   0.1820
-## Detection Rate         0.2845   0.1918   0.1737   0.1607   0.1818
+## Sensitivity            0.9923   0.9929   0.9816   0.9896   0.9972
+## Specificity            0.9993   0.9962   0.9977   0.9968   0.9990
+## Pos Pred Value         0.9982   0.9842   0.9893   0.9834   0.9954
+## Neg Pred Value         0.9969   0.9983   0.9961   0.9980   0.9994
+## Prevalence             0.2862   0.1918   0.1757   0.1628   0.1835
+## Detection Rate         0.2839   0.1905   0.1725   0.1611   0.1830
 ## Detection Prevalence   0.2845   0.1935   0.1743   0.1638   0.1839
-## Balanced Accuracy      0.9976   0.9972   0.9867   0.9961   0.9983
+## Balanced Accuracy      0.9958   0.9946   0.9897   0.9932   0.9981
 ```
 
+
+## Prediction on the Field_Data Set
+Accuracy of the models were,
+Decision Tree: 73.93%;
+Generalized Boosted Model: 95.90%; and,
+Random Forests: 99.10%
+
+
 ```r
-predict <- factor(predictRf) 
+predict <- factor(predictRF) 
 classe <- factor(val_data$classe)
 accuracy <- postResample(predict, classe)
-accuracy
+accuracy[1]
 ```
 
 ```
-##  Accuracy     Kappa 
-## 0.9925234 0.9905414
+##  Accuracy 
+## 0.9909941
 ```
 
 ```r
-1-accuracy[1]
+oose <- 1-accuracy[1]
+oose
 ```
 
 ```
 ##    Accuracy 
-## 0.007476636
+## 0.009005947
 ```
-Words about accuracy and out-of-sample error.
-
-## Predicting on the Test Data Set
+As the Random Forest model was the most accurate, with an accuracy of **0.9910** and an out-of-sample error of **0.0090**, applying it to the Field_Data set yields:
 
 ```r
-result <- predict(modelRf, testing_assess[, -length(names(testing_assess))])
+result <- predict(modfit_RF, field_data[, -length(names(field_data))])
 result
 ```
 
